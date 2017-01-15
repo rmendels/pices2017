@@ -1,0 +1,423 @@
+---
+title: "Easy access to environmental data for analyzing environmental drivers of the dynamics of small pelagic fish"
+output: html_notebook
+---
+
+This notebook demonstrates how easy it is to retrieve data relevant to analysing environmental drivers of small pelagics using ERDDAP servers and the R package `rerddap`.  In the examples,  the code needed to actually get the data, which is short and simple,  are separated from code to map or graph the data once in the R workspace, so that the more complicated plotting code doesn't obscure how simple it is to extract the desired data.
+
+ERDDAP servers provide access to literally petabytes of data, including satellite data, fisheries survey data, glider data, animal tracking data and more.
+
+### MUR SST
+
+MUR (Multi-scale Ultra-high Resolution) is an analyzed SST product at 0.01-degree resolution going back to 2002, providing one of the longest satellite based time series at such high resolution (see https://podaac.jpl.nasa.gov/dataset/MUR-JPL-L4-GLOB-v4.1). We extract the latest data available for a region off the west coast.
+
+```{r MURget}
+require("rerddap")
+sstInfo <- info('jplMURSST41')
+# get latest daily sst
+murSST <- griddap(sstInfo, latitude = c(22., 51.), longitude = c(-140., -105), time = c('last','last'), fields = 'analysed_sst')
+
+```
+
+
+```{r MURplot, fig.width = 6, fig.height = 3, fig.align = 'center', warning = FALSE}
+require("ggplot2")
+require("mapdata")
+mycolor <- colors$temperature
+w <- map_data("worldHires", ylim = c(22., 51.), xlim = c(-140, -105))
+ggplot(data = murSST$data, aes(x = lon, y = lat, fill = analysed_sst)) + 
+    geom_polygon(data = w, aes(x = long, y = lat, group = group), fill = "grey80") +
+    geom_raster(interpolate = FALSE) +
+    scale_fill_gradientn(colours = mycolor, na.value = NA) +
+    theme_bw() + ylab("latitude") + xlab("longitude") +
+    coord_fixed(1.3, xlim = c(-140, -105),  ylim = c(22., 51.)) + ggtitle("Latest MUR SST")
+```
+
+### VIIRS SST and Chlorophyll
+
+VIIRS (Visible Infrared Imaging Radiometer Suite)  is a scanning radiometer, that collects visible and infrared imagery and radiometric measurements of the land, atmosphere, cryosphere, and oceans. VIIRS data is used to measure cloud and aerosol properties, ocean color, sea and land surface temperature, ice motion and temperature, fires, and Earth's albedo.   Both NASA and NOAA provide VIIRS-based high resolution SST and chlorophyll products.
+
+We look at the latest 3-day composite SST product at 750 meter resolution developed by ERD from a real-time NOAA product (see http://coastwatch.noaa.gov/cwn/cw_products_sst.html).  Note that <span style="color:blue">R</span> sees the latitude-longitude grid as slightly uneven (even though it is in fact even), and that produces artificial lines in `ggplot2::geom_raster()`.  In order to remove those lines, the latitude-longitude grid is remapped to an evenly-space grid.
+
+```{r VIIRSget}
+require("rerddap")
+sstInfo <- info('erdVHsstaWS3day')
+# get latest 3-day composite sst
+viirsSST <- griddap(sstInfo, latitude = c(41., 31.), longitude = c(-128., -115), time = c('last','last'), fields = 'sst')
+
+```
+
+
+```{r VIIRSplot, fig.width = 6, fig.height = 3, fig.align = 'center', warning = FALSE}
+require("ggplot2")
+require("mapdata")
+# remap latitiudes and longitudes to even grid
+myLats <- unique(viirsSST$data$lat)
+myLons <- unique(viirsSST$data$lon)
+myLats <- seq(range(myLats)[1], range(myLats)[2], length.out = length(myLats))
+myLons <- seq(range(myLons)[1], range(myLons)[2], length.out = length(myLons))
+# melt these out to full grid
+mapFrame <- expand.grid(x = myLons, y = myLats)
+mapFrame$y <- rev(mapFrame$y)
+# form a frame with the new values and the data
+tempFrame <- data.frame(sst = viirsSST$data$sst, lat = mapFrame$y, lon = mapFrame$x)
+mycolor <- colors$temperature
+w <- map_data("worldHires", ylim = c(30., 42.), xlim = c(-128, -114))
+ggplot(data = tempFrame, aes(x = lon, y = lat, fill = sst)) + 
+    geom_polygon(data = w, aes(x = long, y = lat, group = group), fill = "grey80") +
+    geom_raster(interpolate = FALSE) +
+    scale_fill_gradientn(colours = mycolor, na.value = NA) +
+    theme_bw() + ylab("latitude") + xlab("longitude") +
+    coord_fixed(1.3, xlim = c(-128, -114),  ylim = c(30., 42.)) + ggtitle("Latest VIIRS 3-day SST")
+
+```
+
+We can obtain a time series at a location,  here (36., -126.):
+
+```{r VIIRSTSget}
+require("rerddap")
+viirsSST1 <- griddap(sstInfo, latitude = c(36., 36.), longitude = c(-126., -126.), time = c('2015-01-01','2015-12-31'), fields = 'sst')
+tempTime <- as.Date(viirsSST1$data$time, origin = '1970-01-01', tz = "GMT")
+tempFrame <- data.frame(time = tempTime, sst = viirsSST1$data$sst)
+
+```
+
+
+```{r VIIRSTSplot, fig.width = 6, fig.height = 3, fig.align = 'center', warning = FALSE}
+require("ggplot2")
+ggplot(tempFrame, aes(time, sst)) + geom_line() + theme_bw() + ylab("sst") + ggtitle("VIIRS SST at (36N, 126W)")
+
+```
+
+
+
+We look at a similar 3-day composite for chloropyll for the same region from a scientific quality product developed by NOAA (see http://coastwatch.noaa.gov/cwn/cw_products_sst.html):
+
+```{r VHNCHlaget}
+require("rerddap")
+chlaInfo <- info('erdVHNchla3day')
+viirsCHLA <- griddap(chlaInfo, latitude = c(41., 31.), longitude = c(-128., -115), time = c('last','last'), fields = 'chla')
+
+```
+
+
+```{r VHNCHlaplot, fig.width = 6, fig.height = 3, fig.align = 'center', warning = FALSE}
+require("ggplot2")
+require("mapdata")
+mycolor <- colors$chlorophyll
+w <- map_data("worldHires", ylim = c(30., 42.), xlim = c(-128, -114))
+ggplot(data = viirsCHLA$data, aes(x = lon, y = lat, fill = log(chla))) + 
+    geom_polygon(data = w, aes(x = long, y = lat, group = group), fill = "grey80") +
+    geom_raster(interpolate = FALSE) +
+    scale_fill_gradientn(colours = mycolor, na.value = NA) +
+    theme_bw() + ylab("latitude") + xlab("longitude") +
+    coord_fixed(1.3, xlim = c(-128, -114),  ylim = c(30., 42.)) + ggtitle("Latest VIIRS 3-day Chla")
+
+```
+
+
+
+
+
+### Temperature at 70m in the north Pacific from the SODA model output
+
+This is an example of an extract from a 4-D dataset (results from the "Simple Ocean Data Assimilation (SODA)" model - - see http://www.atmos.umd.edu/~ocean/), and illustrate the case where the z-coordinate does not have the default name "altitude".  Water temperature at 70m depth is extracted for the North Pacific Ocean.
+
+
+```{r soda70get}
+require("rerddap")
+dataInfo <- rerddap::info('hawaii_d90f_20ee_c4cb')
+xpos <- c(135.25, 240.25)
+ypos <- c(20.25, 60.25)
+zpos <- c(70.02, 70.02)
+tpos <- c('2010-12-15', '2010-12-15')
+soda70 <- griddap(dataInfo,  longitude = xpos, latitude = ypos, time = tpos, depth = zpos, fields = 'temp' )
+str(soda70$data)
+```
+
+Since the data cross the dateline, it is necessary to use the new "world2Hires" continental outlines in the package `mapdata` which is Pacific Ocean centered.  Unfortunatley there is a small problem where the outlines from certain countries wrap and mistakenly appear in plots, and those countries must be removed,  see code below.
+
+
+```{r soda70Plot, fig.width = 6, fig.height = 3, fig.align = 'center', warning = FALSE}
+require("ggplot2")
+require("mapdata")
+require("maps")
+xlim <- c(135, 240)
+ylim <- c(20, 60)
+my.col <- colors$temperature
+## Must do a kludge to remove countries that wrap and mess up the plot
+w1 <- map("world2Hires", xlim = c(135, 240), ylim = c(20, 60), fill = TRUE, plot = FALSE)
+remove <- c("UK:Great Britain", "France", "Spain", "Algeria", "Mali", "Burkina Faso", "Ghana", "Togo")
+w <- map_data("world2Hires", regions = w1$names[!(w1$names %in% remove)], ylim = ylim, xlim = xlim)
+myplot <- ggplot() + 
+    geom_raster(data = soda70$data, aes(x = lon, y = lat, fill = temp), interpolate = FALSE) + 
+    geom_polygon(data = w, aes(x = long, y = lat, group = group), fill = "grey80") +
+    theme_bw() + scale_fill_gradientn(colours = my.col, na.value = NA, limits = c(-3,30), name = "temperature") +
+    ylab("latitude") + xlab("longitude") +
+    coord_fixed(1.3, xlim = xlim, ylim = ylim) + 
+    ggtitle(paste("temperature at 70 meters depth from SODA for", soda70$time[1]))
+myplot
+```
+
+### IFREMER
+
+The French agency IFREMER also has an <span style="color:blue">ERDDAP</span> server. We obtain salinity data at 75 meters from "Global Ocean, Coriolis Observation Re-Analysis CORA4.1" model off the west coast of the United States.
+
+```{r IFREMERget}
+require("rerddap")
+urlBase <- "http://www.ifremer.fr/erddap/"
+parameter <- "PSAL"
+ifrTimes <- c("2013-05-15", "2013-05-15")
+ifrLats <- c(30., 50.)
+ifrLons <- c(-140., -110.)
+ifrDepth <- c(75., 75.)
+dataInfo <- rerddap::info("ifremer_tds0_6080_109e_ed80", url = urlBase)
+ifrPSAL <- griddap(dataInfo, longitude = ifrLons, latitude = ifrLats, time = ifrTimes, depth = ifrDepth,  fields = parameter, url = urlBase)
+str(ifrPSAL$data)
+
+```
+
+The `ggplot2` function `geom_raster()` is not designed for unevenly spaced coordinates, as are the latitudes from this model.  The function `interp()` from the package `akima` is used to interpolate the data which are then plotted.
+
+
+```{r ifrPSALplot, fig.width = 6, fig.height = 3, fig.align='center', warning = FALSE}
+## ggplot2 has trouble with unequal y's
+ require("akima")
+ require("dplyr")
+ require("ggplot2")
+ require("mapdata")
+  xlim <- c(-140, -110)
+  ylim <- c(30, 51)
+## ggplot2 has trouble with unequal y's
+  my.col <- colors$salinity
+  tempData1 <- ifrPSAL$data$PSAL
+  tempData <- array(tempData1 , 61 * 54)
+  tempFrame <- data.frame(x = ifrPSAL$data$lon, y = ifrPSAL$data$lat)
+  tempFrame$temp <- tempData
+  tempFrame1 <- dplyr::filter(tempFrame, !is.nan(temp))
+  myinterp <- akima::interp(tempFrame1$x, tempFrame1$y, tempFrame1$temp, xo = seq(min(tempFrame1$x), max(tempFrame1$x), length = 61), yo = seq(min(tempFrame1$y), max(tempFrame1$y), length = 54))
+  myinterp1 <- expand.grid(x = myinterp$x, y = myinterp$y)
+  myinterp1$temp <- array(myinterp$z, 61 * 54)
+  w <- map_data("worldHires", ylim = ylim, xlim = xlim)
+ myplot <- ggplot() +
+    geom_raster(data = myinterp1, aes(x = x, y = y, fill = temp), interpolate = FALSE) +
+    geom_polygon(data = w, aes(x = long, y = lat, group = group), fill = "grey80") +
+    theme_bw() + scale_fill_gradientn(colours = my.col, na.value = NA, limits = c(32, 35), name = "salinity") +
+    ylab("latitude") + xlab("longitude") +
+    coord_fixed(1.3, xlim = xlim, ylim = ylim) + ggtitle(paste("salinity at 75 meters",ifrPSAL$data$time[1] ))
+ myplot
+```
+
+### CalCOFI data
+
+CalCOFI (California Cooperative Oceanic Fisheries Investigations - http://www.calcofi.org) is a multi-agency partnership formed in 1949 to investigate the collapse of the sardine population off California. The organization's members are from NOAA Fisheries Service, Scripps Institution of Oceanography, and California Department of Fish and Wildlife. The scope of this research has evolved into the study of marine ecosystems off California and the management of its fisheries resources.  The nearly complete CalCOFI data, both physical and biological, are available through <span style="color:blue">ERDDAP</span>.
+
+The following example is a modification of a script developed by Dr. Andrew Leising of the Southwest Fisheries Science Center.  The original script has been used to automate the generation of several yearly reports about the California Current Ecosystem.   The script gets chlorophyll and pp data from the hydrocasts,  and then calculates a seasoanlly adjusted chlorophyll anomaly as well as a seasonally adjusted pp.  The first step is to get the information about the particular dataset (see http://coastwatch.pfeg.noaa.gov/erddap/tabledap/siocalcofiHydroCasts.html)
+
+```{r}
+require("rerddap")
+hydroInfo <- info('siocalcofiHydroCasts')
+```
+
+And then get the desired data form 1984 through 2014:
+
+```{r calCOFI}
+require("rerddap")
+calcofi.df <- tabledap(hydroInfo, fields = c('cst_cnt',  'date', 'year', 'month', 'julian_date', 'julian_day', 'rpt_line', 'rpt_sta', 'cruz_num', 'intchl', 'intc14', 'time'), 'time>=1984-01-01T00:00:00Z', 'time<=2014-04-17T05:35:00Z')
+str(calcofi.df)
+
+```
+
+Both "intchl" and "intC14" are characters, and they are easier to work with as numbers:
+
+```{r calCOFInum}
+calcofi.df$cruz_num <- as.numeric(calcofi.df$cruz_num)
+calcofi.df$intc14 <- as.numeric(calcofi.df$intc14)
+calcofi.df$time <- as.Date(calcofi.df$time, origin = '1970-01-01', tz = "GMT")
+
+```
+
+At this point the requested data are in the <span style="color:blue">R</span> workspace - the rest of the code are calculations get the seasonally adjusted values and plot them.
+
+```{r calCOFIPlot, fig.width = 6, fig.height = 3, fig.align='center', fig.show = 'hold', warning = FALSE}
+require("dplyr")
+
+# calculate cruise means
+by_cruznum <- group_by(calcofi.df, cruz_num)
+tempData <- select(by_cruznum, year, month, cruz_num, intchl, intc14)
+CruiseMeans <- summarize(by_cruznum, cruisechl = mean(intchl, na.rm = TRUE), cruisepp = mean(intc14, na.rm = TRUE), year = median(year, na.rm = TRUE), month = median(month, na.rm = TRUE))
+tempTimes <- paste0(CruiseMeans$year,'-',CruiseMeans$month,'-1')
+cruisetimes <- as.Date(tempTimes, origin = '1970-01-01', tz = "GMT")
+CruiseMeans$cruisetimes <- cruisetimes
+# calculate monthly "climatologies"
+byMonth <- group_by(CruiseMeans, month)
+climate <- summarize(byMonth, ppClimate = mean(cruisepp, na.rm = TRUE), chlaClimate = mean(cruisechl, na.rm = TRUE))
+# calculate anomalies
+CruiseMeans$chlanom <- CruiseMeans$cruisechl - climate$chlaClimate[CruiseMeans$month]
+CruiseMeans$ppanom <- CruiseMeans$cruisepp - climate$ppClimate[CruiseMeans$month]
+# calculate mean yearly anomaly
+byYear <- select(CruiseMeans, year)
+tempData <- select(CruiseMeans, year, chlanom, ppanom )
+byYear <- group_by(tempData, year)
+yearlyAnom <- summarize(byYear, ppYrAnom = mean(ppanom, na.rm = TRUE), chlYrAnom = mean(chlanom, na.rm = TRUE))
+yearlyAnom$year <- ISOdate(yearlyAnom$year, 01, 01, hour = 0)
+ggplot(yearlyAnom, aes(year, chlYrAnom)) + geom_line() + 
+  theme_bw() + ggtitle('yearly chla anom')
+ggplot(yearlyAnom, aes(year, ppYrAnom)) + geom_line() + 
+  theme_bw() + ggtitle('yearly pp anom')
+``` 
+
+
+### CPS Trawl Surveys
+
+
+The CPS (Coastal Pelagic Species) Trawl Life History Length Frequency Data contains the length distribution of a subset of individuals from a species (mainly non-target) caught during SWFSC-FRD fishery independent trawl surveys of coastal pelagic species. Measured lengths for indicated length type (fork, standard, total, or mantle) were grouped in 10 mm bins (identified by the midpoint of the length class) and counts are recorded by sex.
+
+We will look at the number and location of sardines (Sardinops sagax) in the tows in March 2010 and 2011, and compare with monthly SST from satellites.  First we query the <span style="color:blue">ERDDAP</span> server to see if CPS Trawl data are available through the <span style="color:blue">ERDDAP</span> server, and if so, get the datasetID for the data we want.
+
+```{r CPSget}
+require("rerddap")
+(CPSinfo <- info('FRDCPSTrawlLHHaulCatch'))
+require("dplyr")
+require("rerddap")
+sardines <- tabledap(CPSinfo, fields = c('latitude',  'longitude', 'time', 'scientific_name', 'subsample_count'), 'time>=2010-01-01', 'time<=2012-01-01', 'scientific_name="Sardinops sagax"' )
+sardines$time <- as.Date(sardines$time, origin = '1970-01-01', tz = "GMT")
+sardines$latitude <- as.numeric(sardines$latitude)
+sardines$longitude <- as.numeric(sardines$longitude)
+sardine2010 <- filter(sardines, time < as.Date('2010-12-01'))
+
+```
+
+
+```{r MWsstget}
+require("rerddap")
+# get the dataset info
+sstInfo <- info('erdMWsstdmday')
+# get 201004 monthly sst
+sst201004 <- griddap('erdMWsstdmday', latitude = c(22., 51.), longitude = c(220., 255), time = c('2010-04-16','2010-04-16'), fields = 'sst')
+# get 201104 monthly sst
+sst201104 <- griddap('erdMWsstdmday', latitude = c(22., 51.), longitude = c(220., 255), time = c('2011-04-16','2011-04-16'), fields = 'sst')
+
+```
+
+
+```{r CPSPlot, fig.width = 6, fig.height = 6, fig.align='center', fig.show = 'hold', warning = FALSE}
+require("dplyr")
+require("ggplot2")
+require("mapdata")
+# get polygons of coast for this area
+w <- map_data("worldHires", ylim = c(22., 51.), xlim = c(220 - 360, 250 - 360))
+# plot 201004 sst on the map
+sardine2010 <- filter(sardines, time < as.Date('2010-12-01', origin = '1970-01-01', tz = "GMT"))
+sardine2011 <- filter(sardines, time > as.Date('2010-12-01', origin = '1970-01-01', tz = "GMT"))
+mycolor <- colors$temperature
+p1 <- ggplot() + 
+  geom_polygon(data = w, aes(x = long, y = lat, group = group), fill = "grey80") +
+  geom_raster(data = sst201004$data, aes(x = lon - 360, y = lat, fill = sst), interpolate = FALSE) +
+  scale_fill_gradientn(colours = mycolor, na.value = NA, limits = c(5,30)) +
+  theme_bw() + ylab("latitude") + xlab("longitude") +
+  coord_fixed(1.3, xlim = c(220 - 360, 250 - 360),  ylim = c(22., 51.))
+
+# plot 201104 sst on the map
+p2 <- ggplot() + 
+  geom_polygon(data = w, aes(x = long, y = lat, group = group), fill = "grey80") +
+  geom_raster(data = sst201104$data, aes(x = lon - 360, y = lat, fill = sst), interpolate = FALSE) +
+  geom_point(data = sardine2011, aes(x = longitude, y = latitude, colour = subsample_count)) +
+  scale_fill_gradientn(colours = mycolor, na.value = NA, limits = c(5,30)) +
+  theme_bw() + ylab("latitude") + xlab("longitude") +
+  coord_fixed(1.3, xlim = c(220 - 360, 250 - 360),  ylim = c(22., 51.))
+p1 + geom_point(data = sardine2010, aes(x = longitude, y = latitude, colour = subsample_count)) + scale_colour_gradient(space = "Lab", na.value = NA, limits = c(0,80))
+
+p2 +   geom_point(data = sardine2011, aes(x = longitude, y = latitude, colour = subsample_count)) + scale_colour_gradient(space = "Lab", na.value = NA, limits = c(0,80))
+
+```
+
+We can also look at the distribution of sardines through the years:
+
+```{r sardinesGet}
+require("rerddap")
+sardinops <- tabledap(CPSinfo, fields = c('longitude', 'latitude', 'time'),  'scientific_name="Sardinops sagax"')
+sardinops$time <- as.Date(sardinops$time, origin = '1970-01-01', tz = "GMT")
+sardinops$year <- as.factor(format(sardinops$time, '%Y'))
+sardinops$latitude <- as.numeric(sardinops$latitude)
+sardinops$longitude <- as.numeric(sardinops$longitude)
+
+```
+
+
+```{r sardinesPlot, fig.width = 6, fig.height = 5, fig.align='center', warning = FALSE}
+require("ggplot2")
+require("mapdata")
+xlim <- c(-135, -110)
+ylim <- c(30, 51)
+coast <- map_data("worldHires", ylim = ylim, xlim = xlim)
+ggplot() + 
+    geom_point(data = sardinops, aes(x = longitude, y = latitude, colour = year)) +
+    geom_polygon(data = coast, aes(x = long, y = lat, group = group), fill = "grey80") +
+    theme_bw() + ylab("latitude") + xlab("longitude") +
+    coord_fixed(1.3, xlim = xlim, ylim = ylim) +
+    ggtitle("Location of sardines by year in EPM Trawls")
+
+```
+
+### NDBC Buoys
+
+NOAA's National Data Buoy Center (NDBC) collects world-wide data from buoys in the ocean. <span style="color:red">ERDDAP</span> can be searched for the location of all buoys in a bounding box with latitudes(37N, 47N) and longitudes (124W, 121W) and the results plotted:
+
+```{r NDBC, fig.width = 6, fig.height = 5, fig.align='center', warning = FALSE}
+# get ocation and station ID of NDBC buoys in same region
+require("ggplot2")
+require("mapdata")
+BuoysInfo <- info('cwwcNDBCMet')
+locationBuoys <- tabledap(BuoysInfo, distinct = TRUE, fields = c("station", "longitude", "latitude"), "longitude>=-124", "longitude<=-121", "latitude>=37", "latitude<=47")
+locationBuoys$latitude <- as.numeric(locationBuoys$latitude)
+locationBuoys$longitude <- as.numeric(locationBuoys$longitude)
+xlim <- c(-130, -110)
+ylim <- c(35, 50)
+coast <- map_data("worldHires", ylim = ylim, xlim = xlim)
+ggplot() + 
+   geom_point(data = locationBuoys, aes(x = longitude , y = latitude, colour = factor(station) )) + 
+   geom_polygon(data = coast, aes(x = long, y = lat, group = group), fill = "grey80") +
+   theme_bw() + ylab("latitude") + xlab("longitude") +
+   coord_fixed(1.3, xlim = xlim, ylim = ylim) +
+   ggtitle("Location of buoys in given region")
+
+```
+
+Looking at wind speed for 2012 for station "46012"
+
+```{r NDBCTS, fig.width = 6, fig.height = 3, fig.align='center', warning = FALSE}
+require("rerddap")
+buoyData <- tabledap(BuoysInfo, fields = c("time", "wspd"), 'station="46012"', 'time>=2012-01-01', 'time<=2013-01-01')
+buoyData$wspd <- as.numeric(buoyData$wspd)
+buoyData$time <- as.Date(buoyData$time, origin = '1970-01-01', tz = "GMT")
+ggplot(buoyData, aes(time, wspd)) + geom_line() + theme_bw() + ylab("wind speed") +
+      ggtitle("Wind Speed in 2012 from buoy 46012 ")
+
+```
+
+
+###  IOOS Glider Data
+
+The mission of the IOOS Glider DAC is to provide glider operators with a simple process for submitting glider data sets to a centralized location, enabling the data to be visualized, analyzed, widely distributed via existing web services and the Global Telecommunications System (GTS) and archived at the National Centers for Environmental Information (NCEI).
+The IOOS Glider Dac is accessible through `rerddap` (http://data.ioos.us/gliders/erddap/).  Extracting and plotting salinity from part of the path of one glider deployed by the Scripps Institution of Oceanography:
+
+```{r gliderGet}
+require("rerddap")
+urlBase <- "https://data.ioos.us/gliders/erddap/"
+gliderInfo <- info("sp064-20161214T1913",  url = urlBase)
+glider <- tabledap(gliderInfo, fields = c("longitude", "latitude", "depth", "salinity"), 'time>=2016-12-14', 'time<=2016-12-23', url = urlBase)
+glider$longitude <- as.numeric(glider$longitude)
+glider$latitude <- as.numeric(glider$latitude)
+glider$depth <- as.numeric(glider$depth)
+
+```
+
+
+```{r gliderPlot, fig.width = 5, fig.height = 5, fig.align = 'center', warning = FALSE}
+require("plot3D")
+scatter3D(x = glider$longitude , y = glider$latitude , z = -glider$depth, colvar = glider$salinity,              col = colors$salinity, phi = 40, theta = 25, bty = "g", type = "p", 
+           ticktype = "detailed", pch = 10, clim = c(33.2,34.31), clab = 'Salinity', 
+           xlab = "longitude", ylab = "latitude", zlab = "depth",
+           cex = c(0.5, 1, 1.5))
+```
