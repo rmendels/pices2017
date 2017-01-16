@@ -7,6 +7,18 @@ This notebook demonstrates how easy it is to retrieve data relevant to analysing
 
 ERDDAP servers provide access to literally petabytes of data, including satellite data, fisheries survey data, glider data, animal tracking data and more.
 
+```{r}
+require("akima")
+require("dplyr")
+require("ggplot2")
+require("mapdata")
+require("maps")
+require("plot3D")
+require("rerddap")
+
+```
+
+
 ### MUR SST
 
 MUR (Multi-scale Ultra-high Resolution) is an analyzed SST product at 0.01-degree resolution going back to 2002, providing one of the longest satellite based time series at such high resolution (see https://podaac.jpl.nasa.gov/dataset/MUR-JPL-L4-GLOB-v4.1). We extract the latest data available for a region off the west coast.
@@ -19,6 +31,7 @@ murSST <- griddap(sstInfo, latitude = c(22., 51.), longitude = c(-140., -105), t
 
 ```
 
+and plot the results:
 
 ```{r MURplot, fig.width = 6, fig.height = 3, fig.align = 'center', warning = FALSE}
 require("ggplot2")
@@ -37,7 +50,7 @@ ggplot(data = murSST$data, aes(x = lon, y = lat, fill = analysed_sst)) +
 
 VIIRS (Visible Infrared Imaging Radiometer Suite)  is a scanning radiometer, that collects visible and infrared imagery and radiometric measurements of the land, atmosphere, cryosphere, and oceans. VIIRS data is used to measure cloud and aerosol properties, ocean color, sea and land surface temperature, ice motion and temperature, fires, and Earth's albedo.   Both NASA and NOAA provide VIIRS-based high resolution SST and chlorophyll products.
 
-We look at the latest 3-day composite SST product at 750 meter resolution developed by ERD from a real-time NOAA product (see http://coastwatch.noaa.gov/cwn/cw_products_sst.html).  Note that <span style="color:blue">R</span> sees the latitude-longitude grid as slightly uneven (even though it is in fact even), and that produces artificial lines in `ggplot2::geom_raster()`.  In order to remove those lines, the latitude-longitude grid is remapped to an evenly-space grid.
+We look at the latest 3-day composite SST product at 750 meter resolution developed by ERD from a real-time NOAA product (see http://coastwatch.noaa.gov/cwn/cw_products_sst.html):  
 
 ```{r VIIRSget}
 require("rerddap")
@@ -46,6 +59,8 @@ sstInfo <- info('erdVHsstaWS3day')
 viirsSST <- griddap(sstInfo, latitude = c(41., 31.), longitude = c(-128., -115), time = c('last','last'), fields = 'sst')
 
 ```
+
+and plot the results. Note that <span style="color:blue">R</span> sees the latitude-longitude grid as slightly uneven (even though it is in fact even), and that produces artificial lines in `ggplot2::geom_raster()`.  In order to remove those lines, the latitude-longitude grid is remapped to an evenly-space grid.
 
 
 ```{r VIIRSplot, fig.width = 6, fig.height = 3, fig.align = 'center', warning = FALSE}
@@ -82,6 +97,7 @@ tempFrame <- data.frame(time = tempTime, sst = viirsSST1$data$sst)
 
 ```
 
+and plot the time series:
 
 ```{r VIIRSTSplot, fig.width = 6, fig.height = 3, fig.align = 'center', warning = FALSE}
 require("ggplot2")
@@ -100,6 +116,7 @@ viirsCHLA <- griddap(chlaInfo, latitude = c(41., 31.), longitude = c(-128., -115
 
 ```
 
+and plot the result:
 
 ```{r VHNCHlaplot, fig.width = 6, fig.height = 3, fig.align = 'center', warning = FALSE}
 require("ggplot2")
@@ -121,7 +138,7 @@ ggplot(data = viirsCHLA$data, aes(x = lon, y = lat, fill = log(chla))) +
 
 ### Temperature at 70m in the north Pacific from the SODA model output
 
-This is an example of an extract from a 4-D dataset (results from the "Simple Ocean Data Assimilation (SODA)" model - - see http://www.atmos.umd.edu/~ocean/), and illustrate the case where the z-coordinate does not have the default name "altitude".  Water temperature at 70m depth is extracted for the North Pacific Ocean.
+This is an example of an extract from a 4-D dataset (results from the "Simple Ocean Data Assimilation (SODA)" model - - see http://www.atmos.umd.edu/~ocean/), and illustrate the case where the z-coordinate does not have the default name "altitude".  Water temperature at 70m depth is extracted for the North Pacific Ocean:
 
 
 ```{r soda70get}
@@ -239,7 +256,7 @@ calcofi.df$time <- as.Date(calcofi.df$time, origin = '1970-01-01', tz = "GMT")
 
 At this point the requested data are in the <span style="color:blue">R</span> workspace - the rest of the code are calculations get the seasonally adjusted values and plot them.
 
-```{r calCOFIPlot, fig.width = 6, fig.height = 3, fig.align='center', fig.show = 'hold', warning = FALSE}
+```{r calCOFIPlotchla, fig.width = 6, fig.height = 3, fig.align='center', fig.show = 'hold', warning = FALSE}
 require("dplyr")
 
 # calculate cruise means
@@ -263,10 +280,13 @@ yearlyAnom <- summarize(byYear, ppYrAnom = mean(ppanom, na.rm = TRUE), chlYrAnom
 yearlyAnom$year <- ISOdate(yearlyAnom$year, 01, 01, hour = 0)
 ggplot(yearlyAnom, aes(year, chlYrAnom)) + geom_line() + 
   theme_bw() + ggtitle('yearly chla anom')
-ggplot(yearlyAnom, aes(year, ppYrAnom)) + geom_line() + 
-  theme_bw() + ggtitle('yearly pp anom')
 ``` 
 
+```{r calCOFIPlotpp, fig.width = 6, fig.height = 3, fig.align='center', fig.show = 'hold', warning = FALSE}
+ggplot(yearlyAnom, aes(year, ppYrAnom)) + geom_line() + 
+  theme_bw() + ggtitle('yearly pp anom')
+
+```
 
 ### CPS Trawl Surveys
 
@@ -288,6 +308,7 @@ sardine2010 <- filter(sardines, time < as.Date('2010-12-01'))
 
 ```
 
+then we get monthly MODIS SST for those time periods:
 
 ```{r MWsstget}
 require("rerddap")
@@ -300,6 +321,7 @@ sst201104 <- griddap('erdMWsstdmday', latitude = c(22., 51.), longitude = c(220.
 
 ```
 
+and plot the sardine counts on the monthly SST:
 
 ```{r CPSPlot, fig.width = 6, fig.height = 6, fig.align='center', fig.show = 'hold', warning = FALSE}
 require("dplyr")
@@ -344,6 +366,7 @@ sardinops$longitude <- as.numeric(sardinops$longitude)
 
 ```
 
+and plot the results, with a different color for each year:
 
 ```{r sardinesPlot, fig.width = 6, fig.height = 5, fig.align='center', warning = FALSE}
 require("ggplot2")
@@ -362,9 +385,9 @@ ggplot() +
 
 ### NDBC Buoys
 
-NOAA's National Data Buoy Center (NDBC) collects world-wide data from buoys in the ocean. <span style="color:red">ERDDAP</span> can be searched for the location of all buoys in a bounding box with latitudes(37N, 47N) and longitudes (124W, 121W) and the results plotted:
+NOAA's National Data Buoy Center (NDBC) collects world-wide data from buoys in the ocean. <span style="color:red">ERDDAP</span> can be searched for the location of all buoys in a bounding box with latitudes(37N, 47N) and longitudes (124W, 121W): 
 
-```{r NDBC, fig.width = 6, fig.height = 5, fig.align='center', warning = FALSE}
+```{r NDBCGet}
 # get ocation and station ID of NDBC buoys in same region
 require("ggplot2")
 require("mapdata")
@@ -372,6 +395,13 @@ BuoysInfo <- info('cwwcNDBCMet')
 locationBuoys <- tabledap(BuoysInfo, distinct = TRUE, fields = c("station", "longitude", "latitude"), "longitude>=-124", "longitude<=-121", "latitude>=37", "latitude<=47")
 locationBuoys$latitude <- as.numeric(locationBuoys$latitude)
 locationBuoys$longitude <- as.numeric(locationBuoys$longitude)
+```
+
+and the results plotted:
+
+```{r NDBCPlot, fig.width = 6, fig.height = 5, fig.align='center', warning = FALSE}
+require("ggplot2")
+require("mapdata")
 xlim <- c(-130, -110)
 ylim <- c(35, 50)
 coast <- map_data("worldHires", ylim = ylim, xlim = xlim)
@@ -413,6 +443,7 @@ glider$depth <- as.numeric(glider$depth)
 
 ```
 
+and draw a 3-D plot of the track:
 
 ```{r gliderPlot, fig.width = 5, fig.height = 5, fig.align = 'center', warning = FALSE}
 require("plot3D")
